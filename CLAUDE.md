@@ -18,5 +18,4 @@
 
 - src/index.ts から関数以外（文字列の定数など）を export しない。workerd が入口とみなして起動に失敗する。単体テストでは気づけないので、E2E（wrangler dev）で確かめる
 - デプロイ直後は古い版が応答することがある。CI は `X-Shortlink-Version` がデプロイした版の ID になるまで待ってから本番 E2E を流す
-
 - クラウドセッションから本番へ E2E を流すと、Playwright の request API はプロキシを通らず ENOTFOUND になる。`use.proxy` に `HTTPS_PROXY` を渡した一時的な設定ファイルで実行する

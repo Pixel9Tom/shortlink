@@ -2,7 +2,7 @@
 
 [![CI / Deploy](https://github.com/Pixel9Tom/shortlink/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Pixel9Tom/shortlink/actions/workflows/ci.yml)
 
-自分専用の短縮 URL サービス。Cloudflare Workers ＋ D1 で動く。仕様は [SPEC.md](SPEC.md)。
+自分専用の短縮 URL サービス。Cloudflare Workers ＋ D1 で動く。仕様は [SPEC.md](SPEC.md)。脆弱性の報告は [SECURITY.md](SECURITY.md) を見てください。
 
 公開先：<https://shortlink.pixel9tom.workers.dev>
 
@@ -81,7 +81,16 @@ PR ごとのプレビュー版は作らない（どの版も本番の D1 と Sec
 
 1. Cloudflare の API トークンに「Account → D1 → Edit」の権限を足す（済み）。「Edit Cloudflare Workers」テンプレートには D1 が含まれない。
 2. D1 データベースを作る（`wrangler d1 create shortlink`）。できた `database_id` を `wrangler.jsonc` に書く（済み）。
-3. 登録 API のトークンを手元で作る（`openssl rand -base64 32` など）。パスワードマネージャーに保存し、GitHub の Secrets に `SHORTLINK_API_TOKEN` として登録する。Worker への設定は CI が行うので、`wrangler secret put` は手で実行しない。値を Claude のセッションに渡さない。
-4. GitHub の Secrets に `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` を登録する。
-5. Settings → General で「Automatically delete head branches」をオン、Settings → Rules で `main` を保護する。
-6. カスタムドメインに替えるとき：`wrangler.jsonc` の `routes` に `{ "pattern": "<domain>", "custom_domain": true }` を足し、`vars` の `SELF_HOSTNAMES` にそのホスト名を足す。コードの変更は要らない。
+3. 登録 API のトークンを手元で作る（`openssl rand -base64 32` など）。パスワードマネージャーに保存し、GitHub の Secrets に `SHORTLINK_API_TOKEN` として登録する。Worker への設定は CI が行うので、`wrangler secret put` は手で実行しない。値を Claude のセッションに渡さない（済み）。
+4. GitHub の Secrets に `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` を登録する（済み）。
+5. Settings → General で「Automatically delete head branches」をオンにする（済み）。
+6. Settings → Rules → Rulesets で、既定のブランチ（`main`）に次のルールを付ける（済み）。
+   - Restrict deletions と Block force pushes。
+   - Require a pull request before merging。承認の数は 0（PR は自分のアカウントで作られ、自分では承認できないため）。
+   - Require status checks to pass に `Check` と `E2E (wrangler dev)`。`Deploy to Cloudflare` は PR では skipped になるので入れない。
+7. 公開リポジトリとしてのセキュリティ設定（済み）。
+   - Settings → Advanced Security：Private vulnerability reporting、Secret scanning と Push protection、Dependabot alerts と security updates、CodeQL（既定の設定）。
+   - Settings → Actions → General → Fork pull request workflows：外部の人のフォークからの PR は、承認するまで CI を動かさない。
+   - リポジトリの About に説明とトピックを入れる。
+8. 本番に出したら、Cloudflare ダッシュボードの Observability で API の呼び出しログを開き、トークンが出ていないことを確かめる（2026-11-04 に確認済み。SPEC.md §9）。
+9. カスタムドメインに替えるとき：`wrangler.jsonc` の `routes` に `{ "pattern": "<domain>", "custom_domain": true }` を足し、`vars` の `SELF_HOSTNAMES` にそのホスト名を足す。コードの変更は要らない。
