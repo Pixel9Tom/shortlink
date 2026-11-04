@@ -1,4 +1,5 @@
-import { apiError, methodNotAllowed, notFound, textPage } from './http';
+import { handleApi } from './api';
+import { methodNotAllowed, notFound, textPage } from './http';
 import { isValidSlug } from './slug';
 
 const SERVICE_NAME = 'shortlink';
@@ -33,9 +34,9 @@ async function redirect(slug: string, env: Env): Promise<Response> {
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
   const { pathname } = new URL(request.url);
 
-  // /api/ 以下は API 専用。登録・一覧・削除は次の PR で実装する
+  // /api/ 以下は API 専用（スラッグとしては扱わない）
   if (pathname === '/api' || pathname.startsWith('/api/')) {
-    return apiError(404, 'not_found', 'API はまだ実装されていません');
+    return handleApi(request, env);
   }
 
   if (!isRedirectMethod(request.method)) {

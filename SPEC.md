@@ -70,6 +70,7 @@
 - 大文字小文字は区別する（`ABC` と `abc` は別のリンク）。D1 のスラッグ列は `BINARY` 照合（SQLite の既定）で扱う。
 - 予約語 `api` は登録できない（`400`、`reserved_slug`）。`/api` 以下と衝突させないため。大文字小文字を区別するので、`API` や `Api` は登録できる（`/API/...` は API のルートに当たらない）。
 - すでに登録済みのスラッグを指定したら `409 Conflict`。
+- `e2e-` で始まるスラッグは本番 E2E が使う。登録はできるが、作ってから 1 時間たつと本番 E2E の掃除で消される（§10）ので、自分では使わない。
 
 ## 6. 転送先 URL の検証
 
@@ -78,8 +79,9 @@
 1. `new URL()` で解釈できる絶対 URL。
 2. スキームが `http:` または `https:`。
 3. 正規化後の値（`URL#href`）の長さが 2048 文字以内。
-4. ホスト名（`URL#hostname`。小文字に正規化済み）が自分自身のホスト名と一致しない。転送のループを防ぐ。
+4. ホスト名（`URL#hostname`。小文字に正規化済み）が自分自身のホスト名と一致しない。転送のループを防ぐ。末尾のドット（`shortlink.pixel9tom.workers.dev.`）は外して比べる。付けたままだと同じホストを指したまま比較をすり抜けるため。
    - 自分自身とは、リクエストの URL のホスト名と、環境変数 `SELF_HOSTNAMES`（`wrangler.jsonc` の `vars`、カンマ区切り）に並べたホスト名。
+   - 設定値は `URL#hostname` と同じ形（小文字・punycode）にそろえてから比べる。日本語ドメインを Unicode のまま書いてもよい。
    - 初期値は `shortlink.pixel9tom.workers.dev`。カスタムドメインを付けたら、そのホスト名を足す。workers.dev の URL も有効なまま残るので、リクエストのホスト名と比べるだけでは足りない。
 5. 保存する値は `URL#href`（正規化後）。受け取った文字列をそのまま保存すると、日本語や改行を含む URL が検証を通ったあと、転送時に `Location` ヘッダーへ入れられず 500 になる。`URL#href` は ASCII に変換されるので、必ず `Location` に入る。
 
@@ -90,10 +92,11 @@
 - リクエスト・レスポンスとも JSON（`Content-Type: application/json`）。
 - 認証：`Authorization: Bearer <token>`。トークンは Worker の Secret `API_TOKEN`（本番は CI が `wrangler deploy --secrets-file` で書き込む。§10）。
   - 比較は固定時間で行う（長さが違えば不一致、同じなら `crypto.subtle.timingSafeEqual` か XOR 累積）。
-  - ヘッダーが無い・形式が違う・値が違う、いずれも `401 Unauthorized` と `WWW-Authenticate: Bearer`。
+  - ヘッダーが無い・形式が違う・値が違う、いずれも `401 Unauthorized` と `WWW-Authenticate: Bearer`。方式名 `Bearer` は大文字小文字を区別しない（RFC 7235）。
   - `API_TOKEN` が未設定なら、API はすべて `503 Service Unavailable` を返す（誤って無防備にならないため）。
 - エラーの本文は `{ "error": "<機械可読なコード>", "message": "<人向けの説明>" }`。
-  - コードの例：`unauthorized`、`invalid_json`、`invalid_url`、`invalid_slug`、`reserved_slug`、`slug_taken`、`invalid_cursor`、`payload_too_large`、`unsupported_media_type`、`not_found`。
+  - コード：`unauthorized`（401）、`not_configured`（503）、`invalid_json`・`invalid_url`・`invalid_slug`・`reserved_slug`・`invalid_cursor`（400）、`slug_taken`（409）、`payload_too_large`（413）、`unsupported_media_type`（415）、`not_found`（404）、`method_not_allowed`（405、`Allow` ヘッダー付き）、`slug_generation_failed`（500）。
+- 認証はルーティングより先に確かめる。トークンが無ければ、存在しない API のパスにも 401 を返す（API の形を外に見せない）。
 - CORS は付けない（ブラウザからは使わない）。
 - 本文は 8 KiB まで。超えたら `413`（`payload_too_large`）。`Content-Type` が `application/json` でなければ `415`（`unsupported_media_type`）。
 - 本文の知らないフィールドは無視する。
@@ -194,6 +197,9 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
 
 - トークンは Secret だけに置く。リポジトリ・ログ・エラー本文に出さない。
 - observability（Workers Logs）は有効にする。ただし `Authorization` ヘッダーとリクエスト本文はログに出さない。
+  - コードからは `console.log` などで `Authorization`・`request.headers`・`Request`・本文を出さない（出したものはそのまま Workers Logs に残る）。今のコードはログを何も出していない。
+  - Workers Logs が自動で残す呼び出しログに、リクエストヘッダーが入るかはドキュメントに書かれていない（2026-11 時点）。Tail Worker の `TailRequest` では、名前に `auth`・`token` などを含むヘッダーの値が `REDACTED` になる、とだけ書かれている。本文は自動では記録されない。
+  - 本番に出したら、ダッシュボードの Observability で API の呼び出しログを開き、トークンが出ていないことを確かめる。出ていたら `observability.logs.invocation_logs` を `false` にする（`console.log` の出力は残る）。
 - API のレスポンスに `Cache-Control: no-store` を付ける。
 - `/` と 404 ページには `Content-Security-Policy: default-src 'none'`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer` を付ける。
 - 転送の `Location` にはユーザー入力（登録済み URL）がそのまま入るが、§6 でスキームを http/https に限っているので `javascript:` などは通らない。
@@ -215,7 +221,7 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
   - ブラウザのコンソールを見る fixture は持ってこない（ブラウザを開かないので効かない）。`/` と 404 のセキュリティヘッダーはレスポンスヘッダーで確かめる。
   - E2E では `API_TOKEN` を `.dev.vars` で与える（`.dev.vars*` と `.wrangler/` は `.gitignore` に入れ、CI では `.dev.vars.example` からコピーする）。
   - `E2E_BASE_URL` と `E2E_API_TOKEN`（CI では `SHORTLINK_API_TOKEN` の値）が指定されたら本番に対して流す。本番 E2E は専用のスラッグ（`e2e-<run id>-<run attempt>`）を登録し、`afterAll` で必ず削除する。
-  - 本番 E2E は最初に一覧を取り、`e2e-` で始まる前回の残り（途中で落ちて消えなかったもの）を削除してから始める。
+  - 本番 E2E は最初に一覧を取り、前回の残り（途中で落ちて消えなかったもの）を削除してから始める。対象は `e2e-` で始まるものと、E2E の転送先に向いたもの（自動生成のスラッグを試したときの残り）。同時に走る別の E2E（手元から本番に流したものなど）のデータを消さないよう、作ってから 1 時間以上たったものだけを消す。自分が作ったものは `afterAll` で消す。
 - CI（GitHub Actions）：`pnpm/setup`、ランナーの版を固定、アクションをハッシュで固定、`timeout-minutes`。
   - PR：format / lint / typecheck / test / E2E（`wrangler dev` に対して）。プレビュー版は発行しない（§2）。
   - main：上に加えて `wrangler d1 migrations apply --remote` → `wrangler deploy` → Worker の Secret `API_TOKEN` を GitHub Secrets の値で書き込む → 本番 E2E。

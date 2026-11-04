@@ -10,8 +10,6 @@
 
 登録・一覧・削除の API は `Authorization: Bearer <token>` で保護している。転送（`/<slug>`）は誰でも使える。
 
-> 登録・一覧・削除の API は実装中（この土台の次の PR で入る）。
-
 ```bash
 curl -X POST https://shortlink.pixel9tom.workers.dev/api/links \
   -H "Authorization: Bearer $SHORTLINK_TOKEN" \
@@ -63,8 +61,10 @@ pnpm dev
 E2E は本番 URL にも流せる。
 
 ```bash
-E2E_BASE_URL=https://shortlink.pixel9tom.workers.dev pnpm test:e2e
+E2E_BASE_URL=https://shortlink.pixel9tom.workers.dev E2E_API_TOKEN="$SHORTLINK_TOKEN" pnpm test:e2e
 ```
+
+本番 E2E は `e2e-` で始まるスラッグを登録して、終わったら消す。最初に前回の残り（1 時間以上前のもの）も消すので、`e2e-` で始まるスラッグは自分では使わない。
 
 ## デプロイ
 
