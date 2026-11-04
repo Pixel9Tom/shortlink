@@ -88,7 +88,7 @@
 ### 共通
 
 - リクエスト・レスポンスとも JSON（`Content-Type: application/json`）。
-- 認証：`Authorization: Bearer <token>`。トークンは Worker の Secret `API_TOKEN`（`wrangler secret put API_TOKEN`）。
+- 認証：`Authorization: Bearer <token>`。トークンは Worker の Secret `API_TOKEN`（本番は CI が `wrangler deploy --secrets-file` で書き込む。§10）。
   - 比較は固定時間で行う（長さが違えば不一致、同じなら `crypto.subtle.timingSafeEqual` か XOR 累積）。
   - ヘッダーが無い・形式が違う・値が違う、いずれも `401 Unauthorized` と `WWW-Authenticate: Bearer`。
   - `API_TOKEN` が未設定なら、API はすべて `503 Service Unavailable` を返す（誤って無防備にならないため）。
@@ -185,7 +185,7 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
 - マイグレーションは `migrations/0001_create_links.sql` に置き、`wrangler d1 migrations apply` で当てる。
   - 本番：CI の本番デプロイの前に `--remote` で当てる。デプロイ前に当たるので、マイグレーションは今動いている版のコードを壊さない形（列や表の追加）だけにする。列の削除や名前の変更は、コードを先にデプロイしてから別の PR で行う。
   - ローカル：`wrangler dev` のローカル D1（`.wrangler/state`）は空で始まる。E2E の前に `--local` で当てる（手元のコマンドと CI の両方）。
-  - 単体テスト：`@cloudflare/vitest-pool-workers` の `readD1Migrations` と `applyD1Migrations` で、テストの前に当てる。
+  - 単体テスト：`@cloudflare/vitest-plugin` の `readD1Migrations` と `cloudflare:test` の `applyD1Migrations` で、テストの前に当てる。
 - D1 のデータベースは本番用 1 つ。PR プレビューは作らない（§2）ので、本番の D1 に触れるのは main の CI（マイグレーション・デプロイ・本番 E2E）だけ。`wrangler dev` はローカル D1 を使うので、手元や PR の E2E で本番のデータに触れない。
 - `wrangler.jsonc` に書く `database_id` は秘密情報ではないので、公開リポジトリに入れてよい。
 - バックアップは D1 の Time Travel（既定で 30 日）に任せる。
@@ -207,8 +207,8 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
 - pnpm 11（`packageManager`・`.nvmrc`・`pnpm-workspace.yaml` の `allowBuilds`。`minimumReleaseAge` は無効にしない）。
 - TypeScript strict。ESLint（typescript-eslint）＋ Prettier。TypeScript は 6.0 系に据え置く（前回と同じ理由。typescript-eslint が TS 7 対応したら見直す）。
 - フレームワークは使わず、`fetch` ハンドラーで自前ルーティング。ルートは 5 本しかない。
-- 単体テスト：Vitest ＋ `@cloudflare/vitest-pool-workers`（workerd 上で D1 のローカル DB を使って動かす）。スラッグ生成・URL 検証・認証比較・各ルートを対象にする。
-  - Vitest は 4 系に据え置く。`@cloudflare/vitest-pool-workers`（0.23.0 時点）が Vitest 4 系にしか対応していないため。pool-workers が Vitest 5 に対応したら見直す。
+- 単体テスト：Vitest 5 ＋ `@cloudflare/vitest-plugin`（workerd 上で D1 のローカル DB を使って動かす）。スラッグ生成・URL 検証・認証比較・各ルートを対象にする。
+  - `@cloudflare/vitest-pool-workers` は `@cloudflare/vitest-plugin` に改名され、旧名は更新されない（0.23.0 で非推奨）。後継は Vitest 5 に対応しているので、Vitest 4 に据え置く理由は無くなった。
 - Worker の `Env` の型は `wrangler types` で生成する。CI では生成し直して差分が無いことも確かめる。
 - E2E：Playwright の request API だけを使う（ブラウザは起動しない。画面が無いため）。`pnpm build` 不要（Worker はビルドなしで `wrangler dev` に渡す）なので、`webServer` で `wrangler dev` を起こして試す。登録 → 転送 → 一覧 → 削除 → 404 までを 1 本で確かめる。
   - 転送の確認では `maxRedirects: 0` を付け、302 と `Location` を直接確かめる。付けないと転送先まで取りに行ってしまう。
@@ -219,9 +219,9 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
 - CI（GitHub Actions）：`pnpm/setup`、ランナーの版を固定、アクションをハッシュで固定、`timeout-minutes`。
   - PR：format / lint / typecheck / test / E2E（`wrangler dev` に対して）。プレビュー版は発行しない（§2）。
   - main：上に加えて `wrangler d1 migrations apply --remote` → `wrangler deploy` → Worker の Secret `API_TOKEN` を GitHub Secrets の値で書き込む → 本番 E2E。
-    - Secret の書き込みは `wrangler secret put API_TOKEN` に標準入力で値を渡す（値をコマンドライン引数やログに出さない）。`wrangler deploy` が Secret を一緒に渡すオプションに対応していれば、そちらで 1 ステップにまとめる（実装時に確かめる）。
+    - Secret は `wrangler deploy --secrets-file` でデプロイと同じ 1 ステップで書き込む。値はランナーの一時ファイル（JSON、権限 600）に書いて渡し、コマンドライン引数やログに出さない。
     - 毎回書き込むので、Worker の Secret の正は GitHub Secrets の 1 か所だけになる。入れ替えは GitHub Secrets を直して main の CI を流し直すだけで済む。
-    - 初回だけ、Worker ができてから Secret が入るまでのわずかな間、API が 503 を返す。§7 のとおり閉じる側に倒れる設計なので許容する。
+    - デプロイと Secret が同時に入るので、Secret の無い版が動く間は無い。`wrangler.jsonc` の `secrets.required` に `API_TOKEN` を書いてあり、Secret が無ければデプロイ自体が失敗する。それでも未設定なら §7 のとおり API は 503 を返す。
   - Secrets：`CLOUDFLARE_API_TOKEN`（D1 の Edit 権限が要る）、`CLOUDFLARE_ACCOUNT_ID`、`SHORTLINK_API_TOKEN`（Worker の `API_TOKEN` に書き込む値。本番 E2E でも使う）。
   - Dependabot とフォークの PR では Secrets が要るジョブを動かさない（前回と同じ条件）。
 - デプロイは CI だけが行う。手元から `pnpm deploy` は実行しない。

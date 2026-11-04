@@ -1,0 +1,4 @@
+# actionlint がまだ知らないランナーのラベル（誤検知を避ける）。対応されたら消す
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

@@ -1,0 +1,6 @@
+# 依存パッケージのインストール時スクリプトは、明示的に許可したものだけ実行する（pnpm 11）。
+# esbuild と workerd は環境別のバイナリを optional dependency で取得するため、
+# postinstall を実行しなくても動く（ビルド・wrangler dev・E2E で確認済み）。
+allowBuilds:
+  esbuild: false
+  workerd: false
