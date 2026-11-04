@@ -95,8 +95,11 @@ jobs:
       # Worker の Secret API_TOKEN を GitHub Secrets の値で毎回書き込む（Secret の正はここ 1 か所）。
       # 値はコマンドライン引数やログに出さず、ランナーの一時ファイル経由で渡す
       - name: Deploy with secrets
+        id: deploy
         env:
           API_TOKEN: ${{ secrets.SHORTLINK_API_TOKEN }}
+          # デプロイした版の ID を読み取るため、wrangler に結果を ND-JSON で書かせる
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
           secrets_file="$RUNNER_TEMP/secrets.json"
           trap 'rm -f "$secrets_file"' EXIT
@@ -106,6 +109,30 @@ jobs:
             fs.writeFileSync(process.argv[1], JSON.stringify({ API_TOKEN: process.env.API_TOKEN }), { mode: 0o600 });
           ' "$secrets_file"
           pnpm exec wrangler deploy --secrets-file "$secrets_file"
+          version_id=$(jq -r 'select(.type == "deploy") | .version_id' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n 1)
+          if [ -z "$version_id" ] || [ "$version_id" = "null" ]; then
+            echo "::error::デプロイした版の ID を取得できませんでした"
+            exit 1
+          fi
+          echo "version-id=$version_id" >> "$GITHUB_OUTPUT"
+      # デプロイ直後は、新しい版がエッジに行き渡るまで古い版が応答することがある。
+      # X-Shortlink-Version がデプロイした版の ID になるまで待ってから E2E を流す
+      - name: Wait for the new version
+        env:
+          VERSION_ID: ${{ steps.deploy.outputs.version-id }}
+        run: |
+          for attempt in $(seq 1 30); do
+            served=$(curl -sS -o /dev/null -D - https://shortlink.pixel9tom.workers.dev/ \
+              | tr -d '\r' | awk -F': ' 'tolower($1) == "x-shortlink-version" { print $2 }' || true)
+            if [ "$served" = "$VERSION_ID" ]; then
+              echo "新しい版 $VERSION_ID が応答しました（$attempt 回目）"
+              exit 0
+            fi
+            echo "待機中：応答した版は ${served:-（ヘッダーなし）}"
+            sleep 5
+          done
+          echo "::error::150 秒待っても新しい版 $VERSION_ID に切り替わりませんでした"
+          exit 1
       # 公開された本番 URL に対して E2E を流す
       - name: Smoke test production
         run: pnpm test:e2e

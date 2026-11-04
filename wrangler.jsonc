@@ -18,6 +18,10 @@
       "migrations_dir": "migrations",
     },
   ],
+  // 応答の X-Shortlink-Version に載せる版の ID。CI はデプロイした版に切り替わるのを待ってから本番 E2E を流す
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA",
+  },
   "vars": {
     // 転送先として拒否する自分自身のホスト名（カンマ区切り）。カスタムドメインを付けたら足す
     "SELF_HOSTNAMES": "shortlink.pixel9tom.workers.dev",

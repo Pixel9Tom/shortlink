@@ -106,3 +106,11 @@ describe('/api', () => {
     expect(response.headers.get('Content-Type')).toMatch(/^application\/json/);
   });
 });
+
+describe('X-Shortlink-Version', () => {
+  it.each(['/', '/missing', '/api/links'])('%s の応答に版の ID が付く', async (path) => {
+    const response = await fetchWorker(path);
+    expect(response.headers.get('X-Shortlink-Version')).toBe(env.CF_VERSION_METADATA.id);
+    expect(env.CF_VERSION_METADATA.id).not.toBe('');
+  });
+});

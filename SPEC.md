@@ -225,6 +225,7 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
 - CI（GitHub Actions）：`pnpm/setup`、ランナーの版を固定、アクションをハッシュで固定、`timeout-minutes`。
   - PR：format / lint / typecheck / test / E2E（`wrangler dev` に対して）。プレビュー版は発行しない（§2）。
   - main：上に加えて `wrangler d1 migrations apply --remote` → `wrangler deploy` → Worker の Secret `API_TOKEN` を GitHub Secrets の値で書き込む → 本番 E2E。
+    - デプロイ直後は、新しい版がエッジに行き渡るまで古い版が応答することがある（最初の API の本番 E2E がこれで落ちた）。すべての応答に `X-Shortlink-Version`（`version_metadata` バインディングの版の ID）を付け、CI は `wrangler deploy` が出力した版の ID を本番が返すまで待ってから本番 E2E を流す（最大 150 秒）。
     - Secret は `wrangler deploy --secrets-file` でデプロイと同じ 1 ステップで書き込む。値はランナーの一時ファイル（JSON、権限 600）に書いて渡し、コマンドライン引数やログに出さない。
     - 毎回書き込むので、Worker の Secret の正は GitHub Secrets の 1 か所だけになる。入れ替えは GitHub Secrets を直して main の CI を流し直すだけで済む。
     - デプロイと Secret が同時に入るので、Secret の無い版が動く間は無い。`wrangler.jsonc` の `secrets.required` に `API_TOKEN` を書いてあり、Secret が無ければデプロイ自体が失敗する。それでも未設定なら §7 のとおり API は 503 を返す。
