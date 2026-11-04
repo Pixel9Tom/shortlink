@@ -57,8 +57,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   return redirect(pathname.slice(1), env);
 }
 
+/** どの版が応答したかを示すヘッダー。デプロイ直後は古い版が応答することがある */
+const VERSION_HEADER = 'X-Shortlink-Version';
+
 export default {
-  fetch(request, env) {
-    return handleRequest(request, env);
+  async fetch(request, env) {
+    const response = await handleRequest(request, env);
+    response.headers.set(VERSION_HEADER, env.CF_VERSION_METADATA.id);
+    return response;
   },
 } satisfies ExportedHandler<Env>;
