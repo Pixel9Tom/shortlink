@@ -13,8 +13,8 @@
     {
       "binding": "DB",
       "database_name": "shortlink",
-      // TODO: `wrangler d1 create shortlink` で作った ID に置き換える（SPEC.md §11）
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // 秘密情報ではないので公開リポジトリに入れてよい（SPEC.md §8）
+      "database_id": "142d5969-f0e3-4d79-8d0e-ff6f0df50d48",
       "migrations_dir": "migrations",
     },
   ],

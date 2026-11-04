@@ -80,7 +80,7 @@ PR ごとのプレビュー版は作らない（どの版も本番の D1 と Sec
 ## 人が画面で行うこと
 
 1. Cloudflare の API トークンに「Account → D1 → Edit」の権限を足す（済み）。「Edit Cloudflare Workers」テンプレートには D1 が含まれない。
-2. D1 データベースを作る（`wrangler d1 create shortlink`）。できた `database_id` を `wrangler.jsonc` に書く。
+2. D1 データベースを作る（`wrangler d1 create shortlink`）。できた `database_id` を `wrangler.jsonc` に書く（済み）。
 3. 登録 API のトークンを手元で作る（`openssl rand -base64 32` など）。パスワードマネージャーに保存し、GitHub の Secrets に `SHORTLINK_API_TOKEN` として登録する。Worker への設定は CI が行うので、`wrangler secret put` は手で実行しない。値を Claude のセッションに渡さない。
 4. GitHub の Secrets に `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` を登録する。
 5. Settings → General で「Automatically delete head branches」をオン、Settings → Rules で `main` を保護する。
