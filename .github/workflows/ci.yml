@@ -1,0 +1,121 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # main のデプロイ（マイグレーション → デプロイ）は途中で止めない
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
+# 実行環境は ubuntu-latest ではなくバージョンを明示する。
+# latest の指す先が変わっても CI の結果が勝手に変わらないようにするため。
+# 上げるときは、各ジョブの runs-on をまとめて変更する。
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # pnpm（package.json の packageManager）と Node.js（.nvmrc）を入れ、
+      # ストアをキャッシュして pnpm-lock.yaml どおりにインストールする
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+          require-lockfile: true
+      - run: pnpm format:check
+      - run: pnpm lint
+      # Env の型（worker-configuration.d.ts）が wrangler.jsonc と食い違っていないか
+      - run: pnpm exec wrangler types --check
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  # Worker を wrangler dev（workerd ＋ ローカル D1）で起動し、HTTP で確かめる
+  e2e:
+    name: E2E (wrangler dev)
+    needs: check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+          require-lockfile: true
+      - run: cp .dev.vars.example .dev.vars
+      - run: pnpm db:migrate:local
+      # request API だけを使うので、ブラウザのインストールは要らない
+      - run: pnpm test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  # main への push（と main での手動実行）で、本番の D1 にマイグレーションを当ててからデプロイする。
+  # PR のプレビュー版は作らない（本番の D1 と Secret を共有してしまうため。SPEC.md §2）
+  deploy:
+    name: Deploy to Cloudflare
+    needs: [check, e2e]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://shortlink.pixel9tom.workers.dev
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+          require-lockfile: true
+      # デプロイ前に当てるので、マイグレーションは今動いている版を壊さない形（追加）だけにする
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply shortlink --remote
+      # Worker の Secret API_TOKEN を GitHub Secrets の値で毎回書き込む（Secret の正はここ 1 か所）。
+      # 値はコマンドライン引数やログに出さず、ランナーの一時ファイル経由で渡す
+      - name: Deploy with secrets
+        env:
+          API_TOKEN: ${{ secrets.SHORTLINK_API_TOKEN }}
+        run: |
+          secrets_file="$RUNNER_TEMP/secrets.json"
+          trap 'rm -f "$secrets_file"' EXIT
+          node -e '
+            const fs = require("node:fs");
+            if (!process.env.API_TOKEN) throw new Error("SHORTLINK_API_TOKEN が設定されていません");
+            fs.writeFileSync(process.argv[1], JSON.stringify({ API_TOKEN: process.env.API_TOKEN }), { mode: 0o600 });
+          ' "$secrets_file"
+          pnpm exec wrangler deploy --secrets-file "$secrets_file"
+      # 公開された本番 URL に対して E2E を流す
+      - name: Smoke test production
+        run: pnpm test:e2e
+        env:
+          E2E_BASE_URL: https://shortlink.pixel9tom.workers.dev
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-production
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7

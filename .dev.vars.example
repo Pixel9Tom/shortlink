@@ -1,0 +1,2 @@
+# 手元の wrangler dev と E2E で使う API のトークン。cp .dev.vars.example .dev.vars で作る
+API_TOKEN=local-dev-token

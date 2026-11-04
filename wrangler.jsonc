@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shortlink",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // PR ごとのプレビュー版は作らない。どの版も本番の D1 と Secret を共有するため（SPEC.md §2）
+  "preview_urls": false,
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shortlink",
+      // 秘密情報ではないので公開リポジトリに入れてよい（SPEC.md §8）
+      "database_id": "142d5969-f0e3-4d79-8d0e-ff6f0df50d48",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    // 転送先として拒否する自分自身のホスト名（カンマ区切り）。カスタムドメインを付けたら足す
+    "SELF_HOSTNAMES": "shortlink.pixel9tom.workers.dev",
+  },
+  // API_TOKEN は Secret。本番は CI が GitHub Secrets の値を書き込み、手元と E2E は .dev.vars で与える
+  "secrets": {
+    "required": ["API_TOKEN"],
+  },
+}
