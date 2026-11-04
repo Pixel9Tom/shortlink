@@ -20,7 +20,8 @@ export function authenticate(request: Request, expectedToken: string | undefined
     return 'not_configured';
   }
   const header = request.headers.get('Authorization');
-  const match = header?.match(/^Bearer ([^\s]+)$/);
+  // 方式名は大文字小文字を区別しない（RFC 7235）
+  const match = header?.match(/^Bearer ([^\s]+)$/i);
   if (!match?.[1]) {
     return 'unauthorized';
   }

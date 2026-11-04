@@ -16,6 +16,14 @@ describe('selfHostnames', () => {
   });
 });
 
+describe('selfHostnames（日本語ドメイン）', () => {
+  it('SELF_HOSTNAMES に Unicode で書いたドメインも punycode にそろえて比べる', () => {
+    const names = selfHostnames('https://short.example/', '短縮.example');
+    expect(names.has('xn--s7y86k.example')).toBe(true);
+    expect(validateTargetUrl('https://短縮.example/x', names).ok).toBe(false);
+  });
+});
+
 describe('validateTargetUrl', () => {
   it('http / https の絶対 URL を正規化して受け付ける', () => {
     expect(validateTargetUrl('https://Example.com/a b?q=あ', self)).toEqual({

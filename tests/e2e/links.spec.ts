@@ -11,6 +11,10 @@ const runId = process.env.GITHUB_RUN_ID
   : `local-${Date.now()}`;
 const slug = `e2e-${runId}`;
 const target = 'https://example.com/shortlink-e2e';
+// 自動生成のスラッグは e2e- で始まらないので、作ったものを覚えておいて afterAll で消す
+const generatedSlugs: string[] = [];
+// 同時に走っている別の E2E のデータは消さないよう、前回の残りとみなすのは 1 時間以上前のものだけ
+const STALE_AFTER_MS = 60 * 60 * 1000;
 
 interface Link {
   slug: string;
@@ -44,16 +48,21 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async ({ request }) => {
   expect(token, '本番に流すときは E2E_API_TOKEN を指定する').toBeTruthy();
-  // 前回の残り（途中で落ちて消えなかったもの）を先に消す
+  // 前回の残り（途中で落ちて消えなかったもの）を先に消す。
+  // e2e- で始まるものと、E2E の転送先（自動生成のスラッグで残ったもの）が対象
+  const staleBefore = Date.now() - STALE_AFTER_MS;
   for (const link of await listAll(request)) {
-    if (link.slug.startsWith('e2e-')) {
+    const isE2e = link.slug.startsWith('e2e-') || link.url === target;
+    if (isE2e && Date.parse(link.createdAt) < staleBefore) {
       await request.delete(`/api/links/${link.slug}`, { headers: auth });
     }
   }
 });
 
 test.afterAll(async ({ request }) => {
-  await request.delete(`/api/links/${slug}`, { headers: auth });
+  for (const created of [slug, ...generatedSlugs]) {
+    await request.delete(`/api/links/${created}`, { headers: auth });
+  }
 });
 
 test('トークンが無ければ API は 401', async ({ request }) => {
@@ -101,7 +110,7 @@ test('スラッグを省くと自動生成する', async ({ request }) => {
   });
   expect(created.status()).toBe(201);
   const link = (await created.json()) as Link;
+  // 確かめる前に覚えておき、途中で落ちても afterAll で消えるようにする
+  generatedSlugs.push(link.slug);
   expect(link.slug).toMatch(/^[23456789a-km-zA-HJ-NP-Z]{6}$/);
-  // 自動生成のスラッグは e2e- で始まらないので、ここで消す
-  expect((await request.delete(`/api/links/${link.slug}`, { headers: auth })).status()).toBe(204);
 });

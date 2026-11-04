@@ -64,7 +64,7 @@ E2E は本番 URL にも流せる。
 E2E_BASE_URL=https://shortlink.pixel9tom.workers.dev E2E_API_TOKEN="$SHORTLINK_TOKEN" pnpm test:e2e
 ```
 
-本番 E2E は `e2e-` で始まるスラッグを登録して、終わったら消す。最初に前回の残りも消す。
+本番 E2E は `e2e-` で始まるスラッグを登録して、終わったら消す。最初に前回の残り（1 時間以上前のもの）も消すので、`e2e-` で始まるスラッグは自分では使わない。
 
 ## デプロイ
 

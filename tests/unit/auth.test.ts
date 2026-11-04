@@ -40,6 +40,10 @@ describe('authenticate', () => {
     expect(authenticate(request(header), 'secret')).toBe('unauthorized');
   });
 
+  it.each(['bearer secret', 'BEARER secret'])('方式名 %j は大文字小文字を区別しない', (header) => {
+    expect(authenticate(request(header), 'secret')).toBe('ok');
+  });
+
   it.each([undefined, ''])('トークンが %j（未設定）なら not_configured', (token) => {
     expect(authenticate(request('Bearer secret'), token)).toBe('not_configured');
   });

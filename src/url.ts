@@ -9,11 +9,22 @@ function normalizeHostname(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '');
 }
 
+/** 設定値のホスト名を URL#hostname と同じ形（punycode・小文字）にそろえる */
+function normalizeConfiguredHostname(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  try {
+    return normalizeHostname(new URL(`http://${trimmed}`).hostname);
+  } catch {
+    return normalizeHostname(trimmed);
+  }
+}
+
 /** 自分自身のホスト名：リクエストのホスト名と SELF_HOSTNAMES（カンマ区切り） */
 export function selfHostnames(requestUrl: string, configured: string | undefined): Set<string> {
   const names = new Set([normalizeHostname(new URL(requestUrl).hostname)]);
   for (const name of (configured ?? '').split(',')) {
-    const normalized = normalizeHostname(name);
+    const normalized = normalizeConfiguredHostname(name);
     if (normalized) names.add(normalized);
   }
   return names;

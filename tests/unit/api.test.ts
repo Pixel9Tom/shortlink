@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { exports } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_BODY_BYTES, PAGE_SIZE } from '../../src/api';
 import { handleRequest } from '../../src/index';
 
@@ -42,6 +42,10 @@ async function insertLink(slug: string, url: string, createdAt: string): Promise
 
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM links').run();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('認証', () => {
@@ -100,6 +104,32 @@ describe('POST /api/links', () => {
     expect(response.status).toBe(201);
     const { slug } = await response.json<{ slug: string }>();
     expect(slug).toMatch(/^[23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/);
+  });
+
+  it('自動生成のスラッグが重複したら作り直す', async () => {
+    // 1 回目と 2 回目は同じスラッグ（777777）、3 回目は別のスラッグ（888888）になるよう乱数を固定する
+    const values = [5, 5, 6];
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(values.shift() ?? 0);
+      return array;
+    });
+    expect(
+      ((await (await post({ url: 'https://example.com/1' })).json()) as { slug: string }).slug,
+    ).toBe('777777');
+    const second = await post({ url: 'https://example.com/2' });
+    expect(second.status).toBe(201);
+    expect(((await second.json()) as { slug: string }).slug).toBe('888888');
+  });
+
+  it('自動生成が 5 回とも重複したら 500', async () => {
+    const spy = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(5);
+      return array;
+    });
+    expect((await post({ url: 'https://example.com/1' })).status).toBe(201);
+    spy.mockClear();
+    await expectError(await post({ url: 'https://example.com/2' }), 500, 'slug_generation_failed');
+    expect(spy).toHaveBeenCalledTimes(5);
   });
 
   it('正規化した URL を保存して返す', async () => {
@@ -189,6 +219,22 @@ describe('POST /api/links', () => {
       413,
       'payload_too_large',
     );
+  });
+
+  it('Content-Length が上限を超えていれば、本文を読む前に 413', async () => {
+    // 本文は 2 バイトなので、実際の長さの確認では 413 にならない
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{}'));
+        controller.close();
+      },
+    });
+    const response = await api('/api/links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(MAX_BODY_BYTES + 1) },
+      body,
+    });
+    await expectError(response, 413, 'payload_too_large');
   });
 
   it('Content-Length の無い（ストリームの）本文も長さで確かめる', async () => {
