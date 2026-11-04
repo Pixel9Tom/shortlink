@@ -98,11 +98,11 @@ describe('GET /:slug', () => {
   });
 });
 
-describe('/api/', () => {
+describe('/api', () => {
   it('API 専用のパスはスラッグとして扱わない', async () => {
     await insertLink('api', 'https://example.com/');
     const response = await fetchWorker('/api');
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(401);
     expect(response.headers.get('Content-Type')).toMatch(/^application\/json/);
   });
 });

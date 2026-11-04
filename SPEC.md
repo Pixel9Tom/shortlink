@@ -78,7 +78,7 @@
 1. `new URL()` で解釈できる絶対 URL。
 2. スキームが `http:` または `https:`。
 3. 正規化後の値（`URL#href`）の長さが 2048 文字以内。
-4. ホスト名（`URL#hostname`。小文字に正規化済み）が自分自身のホスト名と一致しない。転送のループを防ぐ。
+4. ホスト名（`URL#hostname`。小文字に正規化済み）が自分自身のホスト名と一致しない。転送のループを防ぐ。末尾のドット（`shortlink.pixel9tom.workers.dev.`）は外して比べる。付けたままだと同じホストを指したまま比較をすり抜けるため。
    - 自分自身とは、リクエストの URL のホスト名と、環境変数 `SELF_HOSTNAMES`（`wrangler.jsonc` の `vars`、カンマ区切り）に並べたホスト名。
    - 初期値は `shortlink.pixel9tom.workers.dev`。カスタムドメインを付けたら、そのホスト名を足す。workers.dev の URL も有効なまま残るので、リクエストのホスト名と比べるだけでは足りない。
 5. 保存する値は `URL#href`（正規化後）。受け取った文字列をそのまま保存すると、日本語や改行を含む URL が検証を通ったあと、転送時に `Location` ヘッダーへ入れられず 500 になる。`URL#href` は ASCII に変換されるので、必ず `Location` に入る。
@@ -93,7 +93,8 @@
   - ヘッダーが無い・形式が違う・値が違う、いずれも `401 Unauthorized` と `WWW-Authenticate: Bearer`。
   - `API_TOKEN` が未設定なら、API はすべて `503 Service Unavailable` を返す（誤って無防備にならないため）。
 - エラーの本文は `{ "error": "<機械可読なコード>", "message": "<人向けの説明>" }`。
-  - コードの例：`unauthorized`、`invalid_json`、`invalid_url`、`invalid_slug`、`reserved_slug`、`slug_taken`、`invalid_cursor`、`payload_too_large`、`unsupported_media_type`、`not_found`。
+  - コード：`unauthorized`（401）、`not_configured`（503）、`invalid_json`・`invalid_url`・`invalid_slug`・`reserved_slug`・`invalid_cursor`（400）、`slug_taken`（409）、`payload_too_large`（413）、`unsupported_media_type`（415）、`not_found`（404）、`method_not_allowed`（405、`Allow` ヘッダー付き）、`slug_generation_failed`（500）。
+- 認証はルーティングより先に確かめる。トークンが無ければ、存在しない API のパスにも 401 を返す（API の形を外に見せない）。
 - CORS は付けない（ブラウザからは使わない）。
 - 本文は 8 KiB まで。超えたら `413`（`payload_too_large`）。`Content-Type` が `application/json` でなければ `415`（`unsupported_media_type`）。
 - 本文の知らないフィールドは無視する。
