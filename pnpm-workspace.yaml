@@ -4,3 +4,10 @@
 allowBuilds:
   esbuild: false
   workerd: false
+
+# minimatch の DoS（globparts amplification、11.0.1 で修正）を避けるため、11 系にそろえる。
+# eslint・@eslint/config-array・typescript-eslint は ^10 を指定しているが、10 系に修正は無い。
+# これらが使うのは new Minimatch(…)・match()・pattern だけで、11 系にも残っている（lint の対象ファイルと結果が変わらないことを確認済み）。
+# 上流が 11 系に上げたら、この指定は消す
+overrides:
+  minimatch: ^11.0.4

@@ -200,6 +200,7 @@ CREATE INDEX links_created_at ON links (created_at DESC, slug);
   - コードからは `console.log` などで `Authorization`・`request.headers`・`Request`・本文を出さない（出したものはそのまま Workers Logs に残る）。今のコードはログを何も出していない。
   - Workers Logs が自動で残す呼び出しログに、リクエストヘッダーが入るかはドキュメントに書かれていない（2026-11 時点）。Tail Worker の `TailRequest` では、名前に `auth`・`token` などを含むヘッダーの値が `REDACTED` になる、とだけ書かれている。本文は自動では記録されない。
   - 本番に出したら、ダッシュボードの Observability で API の呼び出しログを開き、トークンが出ていないことを確かめる。出ていたら `observability.logs.invocation_logs` を `false` にする（`console.log` の出力は残る）。
+  - 2026-11-04 に確認済み：本番 E2E が API を呼んだ後の呼び出しログに、トークンは出ていなかった。
 - API のレスポンスに `Cache-Control: no-store` を付ける。
 - `/` と 404 ページには `Content-Security-Policy: default-src 'none'`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer` を付ける。
 - 転送の `Location` にはユーザー入力（登録済み URL）がそのまま入るが、§6 でスキームを http/https に限っているので `javascript:` などは通らない。
