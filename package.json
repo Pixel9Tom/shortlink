@@ -21,16 +21,16 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.5.0",
+    "@cloudflare/vitest-plugin": "^1.8.2",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "globals": "^17.13.0",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.1",
+    "typescript-eslint": "^8.72.2",
     "vitest": "^5.0.5",
-    "wrangler": "^4.156.0"
+    "wrangler": "^4.162.0"
   }
 }
